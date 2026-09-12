@@ -3,6 +3,11 @@
   "version": "1.0.0",
   "description": "Reusable validation utilities built on top of Zod for frontend and backend applications.",
   "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc",
     "test": "vitest",
