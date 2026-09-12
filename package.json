@@ -1,0 +1,28 @@
+{
+  "name": "zod-validate",
+  "version": "1.0.0",
+  "description": "Reusable validation utilities built on top of Zod for frontend and backend applications.",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest",
+    "dev:test": "tsx test.ts"
+  },
+  "keywords": [
+    "zod",
+    "validation",
+    "typescript",
+    "frontend",
+    "backend"
+  ],
+  "author": "Bibek Bhattarai",
+  "license": "MIT",
+  "dependencies": {
+    "zod": "^4.6.2"
+  },
+  "devDependencies": {
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.0"
+  }
+}
