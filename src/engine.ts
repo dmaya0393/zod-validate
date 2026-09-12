@@ -1,18 +1,12 @@
 import { z } from "zod";
-import type { FieldValidationResult, ValidationResult } from "./types.js";
+import type { ValidationResult } from "./types.js";
 
-export const validateWithTypeTransformation = <S extends z.ZodType>(
+export const validateObjectEngine = <S extends z.ZodType>(
   schema: S,
   data: unknown,
 ): ValidationResult<z.infer<S>> => {
   const result = schema.safeParse(data);
-
-  if (result.success) {
-    return {
-      valid: true,
-      data: result.data,
-    };
-  }
+  if (result.success) return { valid: true, data: result.data };
 
   const errors: any = {};
 
@@ -25,21 +19,17 @@ export const validateWithTypeTransformation = <S extends z.ZodType>(
       const isLast = i === path.length - 1;
 
       if (isLast) {
-        current[key] = issue.message;
+        if (current[key] === undefined) current[key] = issue.message;
       } else {
-        if (!current[key] || typeof current[key] !== "object") {
+        if (!current[key] || typeof current[key] !== "object")
           current[key] = typeof path[i + 1] === "number" ? [] : {};
-        }
 
         current = current[key];
       }
     }
   }
 
-  return {
-    valid: false,
-    errors,
-  };
+  return { valid: false, errors };
 };
 
 export const validateFieldEngine = <T extends z.ZodObject<any>>(schema: T) => {
@@ -48,23 +38,16 @@ export const validateFieldEngine = <T extends z.ZodObject<any>>(schema: T) => {
   return <K extends keyof z.infer<T>>(
     field: K,
     value: unknown,
-  ): FieldValidationResult<z.infer<T>[K]> => {
+  ): ValidationResult<z.infer<T>[K]> => {
     const result = shape[field].safeParse(value);
 
-    if (result.success) {
-      return {
-        valid: true,
-        data: result.data,
-      };
-    }
+    if (result.success) return { valid: true, data: result.data };
 
     const error = result.error.issues[0];
 
     return {
       valid: false,
-      errors: {
-        [String(field)]: error?.message ?? "validation_error",
-      },
+      errors: { [String(field)]: error?.message ?? "validation_error" },
     };
   };
 };

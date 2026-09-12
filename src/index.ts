@@ -1,9 +1,7 @@
 export { createValidator } from "./createValidators.js";
-
 export type {
-  FieldValidationResult,
-  ValidationFailure,
   ValidationResult,
-  ValidationSuccess,
   ValidationErrors,
+  ValidationMessages,
 } from "./types.js";
+export { resolveValidationMessages } from "./messages.js";
