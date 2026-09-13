@@ -8,8 +8,9 @@ Reusable validation utilities built on top of [Zod](https://zod.dev/) for fronte
 - Individual field validation
 - Nested object validation
 - Nested array validation
-- Validation error codes
-- Human-readable message resolution
+- Structured validation errors
+- Optional validation error codes
+- Optional human-readable message resolution
 - Localized validation messages
 
 The package does **not** replace Zod. Zod remains the validation engine.
@@ -19,39 +20,13 @@ The package does **not** replace Zod. Zod remains the validation engine.
 ## Installation
 
 ```bash
-npm install zod-validate zod
+npm install zod-validate
 ```
 
----
-
-## Why zod-validate?
-
-Zod already provides excellent schema validation.
-
-The problem is usually what happens **around** the schema.
-
-For example, an application may need to:
-
-- Validate an entire form.
-- Validate one field while the user is typing.
-- Keep validation errors associated with their original fields.
-- Handle deeply nested objects and arrays.
-- Return stable validation codes instead of UI-specific messages.
-- Resolve those codes into different languages on the frontend.
-
-`zod-validate` provides a small, consistent API for those tasks.
-
-Instead of repeatedly working directly with Zod's `safeParse()` result, create a validator once:
+You continue to use Zod to define your schemas:
 
 ```ts
-const signup = createValidator(signupSchema);
-```
-
-Then use it wherever needed:
-
-```ts
-signup.validate(data);
-signup.validateField("mobile_no", value);
+import { z } from "zod";
 ```
 
 ---
@@ -60,39 +35,31 @@ signup.validateField("mobile_no", value);
 
 ## 1. Define a Zod schema
 
-You continue to define your validation rules using Zod.
+You define your validation rules using Zod as usual.
+
+For example:
 
 ```ts
 import { z } from "zod";
 
 const signupSchema = z.object({
   mobile_no: z
-    .string("mobile_no")
+    .string()
     .trim()
-    .min(1, "mobile_no_required")
-    .regex(/^[0-9]+$/, "mobile_no_digits")
-    .regex(/^(98|97)/, "mobile_no_prefix")
-    .length(10, "mobile_no_length"),
+    .min(1, "Mobile number is required.")
+    .regex(/^[0-9]+$/, "Mobile number must contain only digits.")
+    .regex(/^(98|97)/, "Mobile number must start with 98 or 97.")
+    .length(10, "Mobile number must be exactly 10 digits."),
 
-  password: z.string("password").min(8, "password_min_length"),
+  password: z.string().min(8, "Password must be at least 8 characters."),
 });
 ```
 
-The validation codes are supplied as Zod messages:
-
-```ts
-"mobile_no_required";
-"mobile_no_digits";
-"mobile_no_prefix";
-"mobile_no_length";
-"password_min_length";
-```
-
-These codes can later be converted into human-readable messages.
+Zod messages are returned by `zod-validate` exactly as provided by the schema.
 
 ---
 
-# 2. Create a Validator
+## 2. Create a Validator
 
 Import `createValidator`:
 
@@ -106,7 +73,7 @@ Create a validator from your schema:
 const signup = createValidator(signupSchema);
 ```
 
-The validator is now tied to that schema.
+The validator is now tied to that schema and can be reused wherever the schema needs to be validated.
 
 ---
 
@@ -137,9 +104,38 @@ The returned `data` is the data parsed by Zod.
 
 This means Zod transformations are also preserved.
 
+For example:
+
+```ts
+const schema = z.object({
+  name: z.string().trim(),
+});
+```
+
+If the input is:
+
+```ts
+{
+  name: "  John Doe  ";
+}
+```
+
+the successful result contains the transformed value:
+
+```ts
+{
+  valid: true,
+  data: {
+    name: "John Doe"
+  }
+}
+```
+
 ---
 
-## Invalid data
+# 4. Invalid Data
+
+Suppose the data is invalid:
 
 ```ts
 const result = signup.validate({
@@ -148,7 +144,105 @@ const result = signup.validate({
 });
 ```
 
-The result is:
+Because the schema contains human-readable messages, the result is:
+
+```ts
+{
+  valid: false,
+  errors: {
+    mobile_no: "Mobile number is required.",
+    password: "Password must be at least 8 characters."
+  }
+}
+```
+
+The errors remain associated with their original fields.
+
+You can use them directly:
+
+```ts
+if (!result.valid) {
+  console.log(result.errors.mobile_no);
+}
+```
+
+Output:
+
+```text
+Mobile number is required.
+```
+
+No additional message resolution is required.
+
+---
+
+# Validation Messages
+
+There are two ways to provide messages in your Zod schemas.
+
+## Direct Messages
+
+The simplest approach is to put the human-readable message directly in the schema:
+
+```ts
+const signupSchema = z.object({
+  mobile_no: z.string().min(1, "Mobile number is required."),
+  password: z.string().min(8, "Password must be at least 8 characters."),
+});
+```
+
+Then:
+
+```ts
+const result = signup.validate({
+  mobile_no: "",
+  password: "123",
+});
+```
+
+returns:
+
+```ts
+{
+  valid: false,
+  errors: {
+    mobile_no: "Mobile number is required.",
+    password: "Password must be at least 8 characters."
+  }
+}
+```
+
+You can use these messages directly:
+
+```ts
+if (!result.valid) {
+  setErrors(result.errors);
+}
+```
+
+This approach is useful when your validation messages are simple and do not need to be managed separately.
+
+---
+
+# Validation Codes
+
+For larger applications, you may prefer to keep validation rules separate from human-readable messages.
+
+Instead of putting the final message in the schema, use a stable validation code:
+
+```ts
+const signupSchema = z.object({
+  mobile_no: z
+    .string()
+    .min(1, "mobile_no_required")
+    .regex(/^[0-9]+$/, "mobile_no_digits")
+    .length(10, "mobile_no_length"),
+
+  password: z.string().min(8, "password_min_length"),
+});
+```
+
+The validator then returns those codes:
 
 ```ts
 {
@@ -160,13 +254,257 @@ The result is:
 }
 ```
 
-The validator returns the validation codes rather than forcing a human-readable message into your validation layer.
+The validation layer does not need to know how those codes should be displayed.
+
+Your application can decide what each code means.
+
+For example:
+
+```ts
+const messages = {
+  mobile_no_required: "Mobile number is required.",
+  mobile_no_digits: "Mobile number must contain only digits.",
+  mobile_no_length: "Mobile number must be exactly 10 digits.",
+  password_min_length: "Password must be at least 8 characters.",
+};
+```
+
+This approach becomes particularly useful when messages need to be:
+
+- Centralized
+- Reused
+- Changed independently from validation rules
+- Localized
+- Shared between different parts of an application
 
 ---
 
-# 4. Type-Safe Result Handling
+# Resolving Validation Messages
 
-The result is a discriminated union.
+`resolveValidationMessages()` is an optional utility for applications that use validation codes.
+
+Import it:
+
+```ts
+import { resolveValidationMessages } from "zod-validate";
+```
+
+Given validation errors:
+
+```ts
+const errors = {
+  mobile_no: "mobile_no_required",
+  password: "password_min_length",
+};
+```
+
+and a message map:
+
+```ts
+const messages = {
+  mobile_no_required: "Mobile number is required.",
+  password_min_length: "Password must be at least 8 characters.",
+};
+```
+
+resolve the codes:
+
+```ts
+const resolvedErrors = resolveValidationMessages(errors, messages);
+```
+
+The result is:
+
+```ts
+{
+  mobile_no: "Mobile number is required.",
+  password: "Password must be at least 8 characters."
+}
+```
+
+The structure of the errors is preserved.
+
+For example:
+
+```ts
+{
+  user: {
+    email: "email_invalid";
+  }
+}
+```
+
+can become:
+
+```ts
+{
+  user: {
+    email: "Invalid email address.";
+  }
+}
+```
+
+You do **not** need to use `resolveValidationMessages()` when your Zod schema already contains human-readable messages.
+
+It is an optional layer for applications that choose to use validation codes.
+
+---
+
+# Missing Message Codes
+
+A message does not have to exist for every validation code.
+
+For example:
+
+```ts
+const errors = {
+  mobile_no: "mobile_no_required",
+  password: "password_min_length",
+};
+
+const messages = {
+  mobile_no_required: "Mobile number is required.",
+};
+```
+
+Resolving the messages produces:
+
+```ts
+{
+  mobile_no: "Mobile number is required.",
+  password: "password_min_length"
+}
+```
+
+Known codes are resolved.
+
+Unknown codes fall back to the original code.
+
+This means missing messages do not silently disappear.
+
+---
+
+# Localized Validation Messages
+
+Validation codes can also be resolved using localized message maps.
+
+For example:
+
+```ts
+const messages = {
+  en: {
+    mobile_no_required: "Mobile number is required.",
+    password_min_length: "Password must be at least 8 characters.",
+  },
+
+  np: {
+    mobile_no_required: "मोबाइल नम्बर आवश्यक छ।",
+    password_min_length: "पासवर्ड कम्तीमा ८ अक्षरको हुनुपर्छ।",
+  },
+};
+```
+
+Resolve English messages:
+
+```ts
+const errors = resolveValidationMessages(
+  validationResult.errors,
+  messages,
+  "en",
+);
+```
+
+Result:
+
+```ts
+{
+  mobile_no: "Mobile number is required.",
+  password: "Password must be at least 8 characters."
+}
+```
+
+Resolve Nepali messages:
+
+```ts
+const errors = resolveValidationMessages(
+  validationResult.errors,
+  messages,
+  "np",
+);
+```
+
+Result:
+
+```ts
+{
+  mobile_no: "मोबाइल नम्बर आवश्यक छ।",
+  password: "पासवर्ड कम्तीमा ८ अक्षरको हुनुपर्छ।"
+}
+```
+
+---
+
+# Default Locale
+
+If no locale is supplied and the message configuration is localized, `en` is preferred when available.
+
+For example:
+
+```ts
+const messages = {
+  en: {
+    required: "This field is required.",
+  },
+
+  np: {
+    required: "यो field आवश्यक छ।",
+  },
+};
+```
+
+Then:
+
+```ts
+resolveValidationMessages(errors, messages);
+```
+
+uses the English messages.
+
+If `en` does not exist, the first available locale is used.
+You can always explicitly choose a locale:
+
+```ts
+resolveValidationMessages(errors, messages, "np");
+```
+
+---
+
+# Plain Message Maps
+
+Localization is optional.
+
+You can provide a normal message map:
+
+```ts
+const messages = {
+  required: "This field is required.",
+  invalid_email: "Invalid email address.",
+};
+```
+
+Then:
+
+```ts
+resolveValidationMessages(errors, messages);
+```
+
+No locale is required.
+
+---
+
+# 5. Type-Safe Result Handling
+
+The result returned by `createValidator()` is a discriminated union.
 
 ```ts
 const result = signup.validate(data);
@@ -196,7 +534,7 @@ means `result.errors` is available.
 
 ---
 
-# 5. Validate a Single Field
+# 6. Validate a Single Field
 
 For frontend forms, you often don't want to validate the entire form.
 
@@ -227,22 +565,27 @@ You get:
 {
   valid: false,
   errors: {
+    mobile_no: "Mobile number must contain only digits."
+  }
+}
+```
+
+If your schema uses validation codes instead:
+
+```ts
+{
+  valid: false,
+  errors: {
     mobile_no: "mobile_no_digits"
   }
 }
 ```
 
-This makes the same schema useful for both:
-
-```text
-Whole form validation
-        +
-Individual field validation
-```
+The same schema can therefore be used for both whole-form and individual-field validation.
 
 ---
 
-# 6. Why Field Validation Is Useful
+# 7. Why Field Validation Is Useful
 
 A frontend form might use the validator like this:
 
@@ -270,7 +613,7 @@ The same Zod schema is used for both operations.
 
 ---
 
-# 7. Nested Objects
+# 8. Nested Objects
 
 `zod-validate` preserves the structure of nested validation errors.
 
@@ -297,7 +640,8 @@ Validate:
 
 ```ts
 const result = userValidator.validate({
-  name: "Bibek",
+  name: "John Doe",
+
   address: {
     city: "",
     street: "",
@@ -319,11 +663,38 @@ The errors mirror the input structure:
 }
 ```
 
+The same structure is preserved when using direct messages:
+
+```ts
+const userSchema = z.object({
+  name: z.string("Name is required."),
+
+  address: z.object({
+    city: z.string("City is required."),
+    street: z.string("Street is required."),
+  }),
+});
+```
+
+The resulting errors are:
+
+```ts
+{
+  valid: false,
+  errors: {
+    address: {
+      city: "City is required.",
+      street: "Street is required."
+    }
+  }
+}
+```
+
 This is useful because the error structure follows the same hierarchy as the data.
 
 ---
 
-# 8. Nested Arrays
+# 9. Nested Arrays
 
 Arrays are also preserved.
 
@@ -342,7 +713,6 @@ const buildingSchema = z.object({
       units: z.array(
         z.object({
           unit_number: z.string("unit_number_required"),
-
           rent: z.number("rent_required"),
         }),
       ),
@@ -367,6 +737,7 @@ const result = buildingValidator.validate({
     {
       floor_number: 1,
       name: "Ground Floor",
+
       units: [
         {
           unit_number: "101",
@@ -378,6 +749,7 @@ const result = buildingValidator.validate({
     {
       floor_number: 2,
       name: "",
+
       units: [
         {
           unit_number: "",
@@ -440,7 +812,7 @@ The structure is intentionally aligned with the original data.
 
 ---
 
-# 9. Using Nested Errors in React
+# 10. Using Nested Errors in React
 
 This structure works naturally with component hierarchies.
 
@@ -471,8 +843,6 @@ errors?.rent;
 For example:
 
 ```tsx
-<input />;
-
 {
   errors?.rent && <p>{errors.rent}</p>;
 }
@@ -490,7 +860,7 @@ into a flat string just to find the error.
 
 ---
 
-# 10. Sparse Array Errors
+# 11. Sparse Array Errors
 
 When only some array items contain errors, the resulting error array can contain empty slots.
 
@@ -499,6 +869,7 @@ For example:
 ```ts
 [
   <empty>,
+
   {
     name: "floor_name_required"
   }
@@ -531,232 +902,68 @@ This allows the error array to preserve the original data indexes.
 
 ---
 
-# 11. Validation Codes
+# 12. Choosing Between Messages and Codes
 
-A major part of the design is that the validation layer can return stable codes.
+Both approaches are supported.
 
-For example:
+### Use direct messages when:
 
-```ts
-const result = signup.validate(data);
-```
+- Your messages are simple.
+- You don't need localization.
+- You want the schema to contain the final message.
+- You want to use `result.errors` directly.
 
-may produce:
-
-```ts
-{
-  valid: false,
-  errors: {
-    mobile_no: "mobile_no_required",
-    password: "password_min_length"
-  }
-}
-```
-
-The validation layer doesn't need to know how these errors should be displayed.
-
-This allows the application to decide what each code means.
-
-For example:
+Example:
 
 ```ts
-const messages = {
-  mobile_no_required: "Mobile number is required.",
-  password_min_length: "Password must be at least 8 characters.",
-};
-```
-
----
-
-# 12. Resolve Validation Messages
-
-Import:
-
-```ts
-import { resolveValidationMessages } from "zod-validate";
-```
-
-Then:
-
-```ts
-const resolvedErrors = resolveValidationMessages(result.errors, messages);
-```
-
-Given:
-
-```ts
-const errors = {
-  mobile_no: "mobile_no_required",
-  password: "password_min_length",
-};
-```
-
-and:
-
-```ts
-const messages = {
-  mobile_no_required: "Mobile number is required.",
-  password_min_length: "Password must be at least 8 characters.",
-};
-```
-
-the result is:
-
-```ts
-{
-  mobile_no: "Mobile number is required.",
-  password: "Password must be at least 8 characters."
-}
-```
-
----
-
-# 13. Missing Message Codes
-
-A message does not have to exist for every validation code.
-
-For example:
-
-```ts
-const errors = {
-  mobile_no: "mobile_no_required",
-  password: "password_min_length",
-};
-
-const messages = {
-  mobile_no_required: "Mobile number is required.",
-};
-```
-
-The known message is resolved:
-
-```ts
-{
-  mobile_no: "Mobile number is required.",
-  password: "password_min_length"
-}
-```
-
-An unknown code falls back to the original code.
-
-This means missing translations do not silently disappear.
-
----
-
-# 14. Localized Messages
-
-Messages can also be provided by locale.
-
-```ts
-const messages = {
-  en: {
-    mobile_no_required: "Mobile number is required.",
-    password_min_length: "Password must be at least 8 characters.",
-  },
-
-  np: {
-    mobile_no_required: "मोबाइल नम्बर आवश्यक छ।",
-    password_min_length: "पासवर्ड कम्तीमा ८ अक्षरको हुनुपर्छ।",
-  },
-};
-```
-
-Resolve English messages:
-
-```ts
-const errors = resolveValidationMessages(
-  validationResult.errors,
-  messages,
-  "en",
-);
+z.string().min(1, "Name is required.");
 ```
 
 Result:
 
 ```ts
 {
-  mobile_no: "Mobile number is required.",
-  password: "Password must be at least 8 characters."
+  name: "Name is required.";
 }
 ```
 
-Resolve Nepali messages:
+### Use validation codes when:
+
+- Messages need to be centralized.
+- Multiple parts of the application share the same messages.
+- Messages need to be localized.
+- You want to change wording without changing validation rules.
+- The validation layer should return stable identifiers rather than UI text.
+
+Example:
 
 ```ts
-const errors = resolveValidationMessages(
-  validationResult.errors,
-  messages,
-  "np",
-);
+z.string().min(1, "name_required");
 ```
 
 Result:
 
 ```ts
 {
-  mobile_no: "मोबाइल नम्बर आवश्यक छ।",
-  password: "पासवर्ड कम्तीमा ८ अक्षरको हुनुपर्छ।"
+  name: "name_required";
 }
 ```
 
----
-
-# 15. Default Locale
-
-If no locale is supplied and the message configuration is localized, `en` is preferred when available.
-
-For example:
-
-```ts
-const messages = {
-  en: {
-    required: "This field is required.",
-  },
-
-  np: {
-    required: "यो field आवश्यक छ।",
-  },
-};
-```
-
-Then:
+Then resolve it:
 
 ```ts
 resolveValidationMessages(errors, messages);
 ```
 
-uses the English messages.
+There is no requirement to use validation codes.
 
-If `en` does not exist, the first available locale is used.
-
----
-
-# 16. Plain Messages
-
-Localization is optional.
-
-You can simply use:
-
-```ts
-const messages = {
-  required: "This field is required.",
-  invalid_email: "Invalid email address.",
-};
-```
-
-Then:
-
-```ts
-resolveValidationMessages(errors, messages);
-```
-
-No locale is required.
+There is also no requirement to use `resolveValidationMessages()`.
 
 ---
 
-# 17. Locale Configuration Validation
+# 13. Locale Configuration Validation
 
-The resolver validates the message configuration.
+`resolveValidationMessages()` validates the message configuration it receives.
 
 A plain message map must contain string messages:
 
@@ -797,21 +1004,58 @@ is invalid because validation messages must be strings.
 
 ---
 
-# 18. Frontend Use Case
+# 14. Frontend Use Case
 
-A React form can use the library in two stages.
+A React form can use the library without requiring message resolution.
 
-### During field interaction
+## During field interaction
+
+If your schema uses direct messages:
 
 ```ts
 const result = signup.validateField("mobile_no", mobileNo);
 
 if (!result.valid) {
-  setErrors(result.errors);
+  setMobileError(result.errors.mobile_no);
 }
 ```
 
-### During submission
+The error can be displayed immediately.
+
+If your schema uses validation codes:
+
+```ts
+const result = signup.validateField("mobile_no", mobileNo);
+
+if (!result.valid) {
+  setMobileError(result.errors.mobile_no);
+}
+```
+
+the error will contain the code instead.
+
+You can resolve it when appropriate:
+
+```ts
+const errors = resolveValidationMessages(result.errors, messages);
+```
+
+## During submission
+
+With direct messages:
+
+```ts
+const result = signup.validate(formData);
+
+if (!result.valid) {
+  setErrors(result.errors);
+  return;
+}
+
+submitForm(result.data);
+```
+
+With validation codes:
 
 ```ts
 const result = signup.validate(formData);
@@ -826,8 +1070,190 @@ if (!result.valid) {
 submitForm(result.data);
 ```
 
-This gives the frontend:
+This keeps the two approaches independent while allowing them to use the same validator.
+
+---
+
+# 15. Backend Use Case
+
+The same validator can be used on the backend.
+
+For example:
+
+```ts
+const result = signup.validate(req.body);
+
+if (!result.valid) {
+  return res.status(400).json({
+    errors: result.errors,
+  });
+}
+```
+
+When using validation codes, the backend can return stable codes:
+
+```json
+{
+  "errors": {
+    "mobile_no": "mobile_no_required",
+    "password": "password_min_length"
+  }
+}
+```
+
+The frontend can then decide how those codes should be displayed.
+
+This allows the backend validation rules and frontend presentation to remain separate.
+
+---
+
+# 16. Zod Remains the Validation Engine
+
+`zod-validate` does not replace Zod.
+
+Your schemas are still Zod schemas:
+
+```ts
+const schema = z.object({
+  name: z.string().min(1, "Name is required."),
+});
+```
+
+Zod performs the actual validation.
+
+`zod-validate` provides a reusable layer around the result:
 
 ```text
 Zod schema
+    ↓
+Zod validation
+    ↓
+createValidator()
+    ↓
+Structured validation result
 ```
+
+The package does not introduce another validation language or replace Zod's schema API.
+
+---
+
+# API Summary
+
+## `createValidator(schema)`
+
+Creates a reusable validator from a Zod schema.
+
+```ts
+const validator = createValidator(schema);
+```
+
+### `validator.validate(data)`
+
+Validates the complete value.
+
+```ts
+const result = validator.validate(data);
+```
+
+Returns either:
+
+```ts
+{
+  valid: true,
+  data: parsedData
+}
+```
+
+or:
+
+```ts
+{
+  valid: false,
+  errors: validationErrors
+}
+```
+
+### `validator.validateField(field, value)`
+
+Validates an individual field of a Zod object schema.
+
+```ts
+const result = validator.validateField("mobile_no", value);
+```
+
+Returns either:
+
+```ts
+{
+  valid: true,
+  data: parsedValue
+}
+```
+
+or:
+
+```ts
+{
+  valid: false,
+  errors: {
+    mobile_no: "validation message or code"
+  }
+}
+```
+
+---
+
+## `resolveValidationMessages(errors, messages, locale?)`
+
+Optionally resolves validation codes into human-readable messages.
+
+```ts
+const resolvedErrors = resolveValidationMessages(errors, messages);
+```
+
+For localized messages:
+
+```ts
+const resolvedErrors = resolveValidationMessages(errors, messages, "np");
+```
+
+This function is only needed when you choose to manage validation messages separately from your Zod schemas.
+
+---
+
+# Design Philosophy
+
+`zod-validate` intentionally stays small.
+
+It does not try to replace Zod or create a new validation system.
+
+Instead, it focuses on a few useful problems around Zod validation:
+
+- Reusable validators
+- Whole-object validation
+- Field-level validation
+- Structured nested errors
+- Preserving array indexes
+- Optional validation codes
+- Optional message resolution
+- Optional localization
+
+You can keep your schemas simple with direct messages:
+
+```ts
+z.string().min(1, "Name is required.");
+```
+
+or use stable validation codes when your application benefits from separating validation rules from presentation:
+
+```ts
+z.string().min(1, "name_required");
+```
+
+Both approaches work with the same validator.
+
+---
+
+# License
+
+MIT
