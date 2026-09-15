@@ -1,6 +1,6 @@
 {
   "name": "zod-validate",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Reusable validation utilities built on top of Zod for frontend and backend applications.",
   "keywords": [
     "zod",
