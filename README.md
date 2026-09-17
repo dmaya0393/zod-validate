@@ -6,6 +6,7 @@ Reusable validation utilities built on top of [Zod](https://zod.dev/) for fronte
 
 - Whole-form validation
 - Individual field validation
+- Deeply nested field validation
 - Nested object validation
 - Nested array validation
 - Structured validation errors
@@ -14,6 +15,54 @@ Reusable validation utilities built on top of [Zod](https://zod.dev/) for fronte
 - Localized validation messages
 
 The package does **not** replace Zod. Zod remains the validation engine.
+
+---
+
+## Recent Update
+
+The next release, `v1.1.3`, adds support for validating a nested field directly without forcing a whole-form validation pass.
+
+Examples:
+
+- `users.0.mobile_no`
+- `users[0].password`
+- `profile.address.city`
+
+This is useful when a form library wants to validate one field at a time while the user is editing, while still keeping full-form validation available for submit-time checks.
+
+## Update Log
+
+### v1.2.0
+
+- Added support for deep nested field validation for object and array paths
+- Added bracket-path support such as `users[0].password`
+- Improved nested error mapping so field-level errors retain the original path structure
+- Kept full-form validation available for submit-time checks
+- Updated compatibility patterns to align with the current Zod v4 API
+
+### v1.1.2
+
+- Published the reusable validation utility for whole-form and direct field validation
+- Added nested object and array error support
+- Added message resolution and localization utilities
+
+### v1.1.1
+
+- Improved validation result consistency
+- Added more regression coverage for field-level validation
+- Refined the public validation API behavior
+
+### v1.1.0
+
+- Added reusable validator creation via `createValidator()`
+- Added direct field validation for object schemas
+- Added message resolution utilities for code-based validation flows
+
+### v1.0.0
+
+- Initial release
+- Added whole-form validation with structured nested errors
+- Added optional message resolution and localization support
 
 ---
 
@@ -133,7 +182,45 @@ the successful result contains the transformed value:
 
 ---
 
-# 4. Invalid Data
+# 4. Validate a Nested Field Directly
+
+You can now validate a nested path without validating the whole form:
+
+```ts
+const nestedSchema = z.object({
+  users: z.array(
+    z.object({
+      mobile_no: z.string().regex(/^[0-9]+$/, "mobile_no_digits"),
+      password: z.string().min(8, "password_length"),
+    }),
+  ),
+});
+
+const nested = createValidator(nestedSchema);
+
+const result = nested.validateField("users.0.mobile_no", "abc");
+```
+
+Result:
+
+```ts
+{
+  valid: false,
+  errors: {
+    users: [
+      {
+        mobile_no: "mobile_no_digits",
+      },
+    ],
+  },
+}
+```
+
+This is especially useful for form libraries that validate one field at a time while the user is typing.
+
+---
+
+# 5. Invalid Data
 
 Suppose the data is invalid:
 

@@ -1,5 +1,10 @@
 import { z } from "zod";
 import type { ValidationResult } from "./types.js";
+import {
+  parseFieldPath,
+  resolveSchemaAtPath,
+  setErrorAtPath,
+} from "./parser.js";
 
 export const validateObjectEngine = <S extends z.ZodType>(
   schema: S,
@@ -11,43 +16,42 @@ export const validateObjectEngine = <S extends z.ZodType>(
   const errors: any = {};
 
   for (const issue of result.error.issues) {
-    let current = errors;
-    const path = issue.path;
+    const path = issue.path.filter(
+      (segment): segment is string | number =>
+        typeof segment === "string" || typeof segment === "number",
+    );
 
-    for (let i = 0; i < path.length; i++) {
-      const key = path[i]!;
-      const isLast = i === path.length - 1;
-
-      if (isLast) {
-        if (current[key] === undefined) current[key] = issue.message;
-      } else {
-        if (!current[key] || typeof current[key] !== "object")
-          current[key] = typeof path[i + 1] === "number" ? [] : {};
-
-        current = current[key];
-      }
-    }
+    setErrorAtPath(errors, path, issue.message);
   }
 
   return { valid: false, errors };
 };
 
 export const validateFieldEngine = <T extends z.ZodObject<any>>(schema: T) => {
-  const shape = schema.shape;
-
-  return <K extends keyof z.infer<T>>(
-    field: K,
+  return (
+    field: string | keyof z.infer<T>,
     value: unknown,
-  ): ValidationResult<z.infer<T>[K]> => {
-    const result = shape[field].safeParse(value);
+  ): ValidationResult<unknown> => {
+    const path =
+      typeof field === "string" ? parseFieldPath(field) : [String(field)];
+    const targetSchema = resolveSchemaAtPath(schema, path);
+
+    if (!targetSchema)
+      throw new Error(
+        `Field path "${String(field)}" does not exist in the schema.`,
+      );
+
+    const result = targetSchema.safeParse(value);
 
     if (result.success) return { valid: true, data: result.data };
 
     const error = result.error.issues[0];
+    const errors: Record<string, any> = {};
+    setErrorAtPath(errors, path, error?.message ?? "validation_error");
 
     return {
       valid: false,
-      errors: { [String(field)]: error?.message ?? "validation_error" },
+      errors,
     };
   };
 };

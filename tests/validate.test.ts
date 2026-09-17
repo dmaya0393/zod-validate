@@ -95,6 +95,68 @@ describe("createValidator", () => {
         },
       });
     });
+
+    it("accepts a valid nested field path", () => {
+      const nested = createValidator(nestedSchema);
+      const result = nested.validateField("users.0.mobile_no", "9812345678");
+
+      expect(result).toEqual({
+        valid: true,
+        data: "9812345678",
+      });
+    });
+
+    it("rejects an invalid nested field path", () => {
+      const nested = createValidator(nestedSchema);
+      const result = nested.validateField("users.0.mobile_no", "abc");
+
+      expect(result).toEqual({
+        valid: false,
+        errors: {
+          users: [
+            {
+              mobile_no: "mobile_no_digits",
+            },
+          ],
+        },
+      });
+    });
+
+    it("accepts a valid nested array field path with bracket notation", () => {
+      const nested = createValidator(nestedSchema);
+      const result = nested.validateField("users[0].password", "Password123!");
+
+      expect(result).toEqual({
+        valid: true,
+        data: "Password123!",
+      });
+    });
+
+    it("rejects an invalid nested array field path with bracket notation", () => {
+      const nested = createValidator(nestedSchema);
+      const result = nested.validateField("users[0].password", "short");
+
+      expect(result).toEqual({
+        valid: false,
+        errors: {
+          users: [
+            {
+              password: "password_length",
+            },
+          ],
+        },
+      });
+    });
+
+    it("rejects a missing nested property path", () => {
+      const nested = createValidator(nestedSchema);
+
+      expect(() =>
+        nested.validateField("users.0.missing_field", "9812345678"),
+      ).toThrow(
+        'Field path "users.0.missing_field" does not exist in the schema.',
+      );
+    });
   });
 });
 
